@@ -1,3 +1,5 @@
+const sanitizarNome = (nome) => nome.replace(/[<>]/g, (c) => ({ '<': '&lt;', '>': '&gt;' }[c]));
+
 let nomes = JSON.parse(localStorage.getItem("nomes")) || [];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -9,13 +11,14 @@ function adicionarAmigo() {
     const input = document.getElementById("amigo");
     const nome = input.value.trim();
 
-    if (!nome) {
-        alert("Por favor, digite um nome válido!");
+    const erro = validarNome(nome);
+    if (erro) {
+        mostrarMensagem(erro, "erro");
         return;
     }
 
     if (nomes.some(p => p.toLowerCase() === nome.toLowerCase())) {
-        alert("Este nome já foi adicionado!");
+        mostrarMensagem("Este nome já foi adicionado!", "erro");
         limparCampo();
         return;
     }
@@ -26,6 +29,12 @@ function adicionarAmigo() {
     limparCampo();
 }
 
+function validarNome(nome) {
+    if (nome.length < 2) return "Nome muito curto (mínimo 2 letras)";
+    if (!/^[\p{L}\s']+$/u.test(nome)) return "Caracteres inválidos no nome";
+    return null;
+}
+
 function removerAmigo(index) {
     nomes.splice(index, 1);
     salvarLista();
@@ -34,29 +43,32 @@ function removerAmigo(index) {
 
 function atualizarLista() {
     const lista = document.getElementById("listaAmigos");
-    lista.innerHTML = "";
+    lista.innerHTML = nomes.length 
+        ? nomes.map((nome, i) => `
+            <li>
+                <span>${sanitizarNome(nome)}</span>
+                <button 
+                    aria-label="Remover ${nome}" 
+                    class="remover" 
+                    onclick="removerAmigo(${i})"
+                >❌</button>
+            </li>
+        `).join('')
+        : '<li class="lista-vazia">Adicione participantes</li>';
 
-    if (nomes.length === 0) {
-        lista.innerHTML = "<li>Nenhum amigo adicionado.</li>";
-        return;
-    }
-
-    nomes.forEach((nome, index) => {
-        const item = document.createElement("li");
-        item.textContent = nome;
-
-        const botaoRemover = document.createElement("button");
-        botaoRemover.textContent = "❌";
-        botaoRemover.classList.add("remover");
-        botaoRemover.onclick = () => removerAmigo(index);
-
-        item.appendChild(botaoRemover);
-        lista.appendChild(item);
-    });
+    document.getElementById("contador").textContent = nomes.length;
 }
 
 function salvarLista() {
-    localStorage.setItem("nomes", JSON.stringify(nomes));
+    try {
+        if (JSON.stringify(nomes).length > 5000) {
+            throw new Error("Espaço no armazenamento local esgotado!");
+        }
+        localStorage.setItem("nomes", JSON.stringify(nomes));
+    } catch (e) {
+        console.error("Erro ao salvar no localStorage:", e);
+        mostrarMensagem("Erro ao salvar! Limpe o histórico ou use modo privado.", "erro");
+    }
 }
 
 function limparCampo() {
@@ -67,45 +79,102 @@ function limparCampo() {
 
 function verificarBotaoAdicionar() {
     const input = document.getElementById("amigo");
-    const botao = document.getElementById("adicionarAmigo");
-    botao.disabled = !input.value.trim();
+    document.getElementById("adicionarAmigo").disabled = !input.value.trim();
 }
 
 document.getElementById("amigo").addEventListener("input", verificarBotaoAdicionar);
 
-function sortearAmigo() {
-    if (nomes.length < 2) {
-        alert("Adicione pelo menos 2 amigos para sortear.");
+function importarNomes() {
+    const texto = prompt("Cole os nomes separados por vírgula ou quebra de linha:");
+    if (!texto) return;
+
+    const novosNomes = texto.split(/[\n,]/)
+        .map(nome => nome.trim())
+        .filter(nome => nome && !nomes.some(n => n.toLowerCase() === nome.toLowerCase()));
+
+    if (novosNomes.length === 0) {
+        mostrarMensagem("Nenhum nome novo adicionado.", "erro");
         return;
     }
 
-    let nomesSorteados = [...nomes];
-    let tentativas = 0;
-    let maxTentativas = 100;
+    nomes.push(...novosNomes);
+    salvarLista();
+    atualizarLista();
+    mostrarMensagem(`${novosNomes.length} nomes adicionados!`);
+}
 
-    do {
-        nomesSorteados = shuffleArray([...nomes]);
-        tentativas++;
-        if (tentativas > maxTentativas) {
-            alert("Não foi possível gerar um sorteio válido. Tente novamente.");
-            return;
-        }
-    } while (nomes.some((nome, i) => nome === nomesSorteados[i]));
+function copiarResultado() {
+    const resultado = document.querySelectorAll('#resultado li');
+    if (resultado.length === 0) {
+        mostrarMensagem("Nada para copiar!", "erro");
+        return;
+    }
 
-    const resultado = document.getElementById("resultado");
-    resultado.innerHTML = "";
-
-    nomes.forEach((nome, i) => {
-        const itemResultado = document.createElement("li");
-        itemResultado.textContent = `${nome} vai presentear ${nomesSorteados[i]}`;
-        resultado.appendChild(itemResultado);
+    const texto = [...resultado].map(li => li.textContent).join('\n');
+    navigator.clipboard.writeText(texto).then(() => {
+        mostrarMensagem("Resultado copiado!");
+    }).catch(() => {
+        mostrarMensagem("Erro ao copiar!", "erro");
     });
 }
 
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+const [shuffleArray, validarSorteio] = [
+    (array) => {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    },
+    (original, sorteado) => original.every((_, i) => original[i] !== sorteado[i])
+];
+
+function sortearAmigo() {
+    const MINIMO = 2;
+    const MAX_TENTATIVAS = 1000;
+    
+    if (nomes.length < MINIMO) {
+        mostrarMensagem(`Adicione pelo menos ${MINIMO} participantes!`, "erro");
+        return;
     }
-    return array;
+
+    let tentativas = 0;
+    let sorteio;
+    
+    do {
+        sorteio = shuffleArray([...nomes]);
+        tentativas++;
+    } while (tentativas < MAX_TENTATIVAS && !validarSorteio(nomes, sorteio));
+
+    if (tentativas >= MAX_TENTATIVAS) {
+        mostrarMensagem("Não foi possível gerar um sorteio válido", "erro");
+        return;
+    }
+
+    exibirResultado(sorteio);
+}
+
+function exibirResultado(sorteio) {
+    const resultado = document.getElementById("resultado");
+    resultado.innerHTML = nomes.map((nome, i) => `
+        <li>${sanitizarNome(nome)} → ${sanitizarNome(sorteio[i])}</li>
+    `).join('');
+}
+
+function mostrarMensagem(texto, tipo = 'sucesso', tempo = 3000) {
+    const div = document.createElement('div');
+    div.className = `mensagem-flutuante ${tipo}`;
+    div.textContent = texto;
+    document.body.appendChild(div);
+    
+    setTimeout(() => div.remove(), tempo);
+}
+
+function resetarTudo() {
+    if (confirm("Isso apagará todos os dados. Continuar?")) {
+        nomes = [];
+        localStorage.clear();
+        atualizarLista();
+        document.getElementById("resultado").innerHTML = "";
+    }
 }
