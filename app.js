@@ -55,49 +55,27 @@ function sortearAmigo() {
         return;
     }
 
+    let nomesSorteados = [...nomes]; 
+
+    do {
+        nomesSorteados = shuffleArray([...nomes]);
+    } while (nomes.some((nome, i) => nome === nomesSorteados[i]));
+
     const resultado = document.getElementById('resultado');
-    const nomesSorteados = [...nomes]; 
-    
     resultado.innerHTML = ''; 
 
-    function sortearAmigo() {
-        if (nomes.length < 2) {
-            alert("Adicione pelo menos 2 amigos para sortear.");
-            return;
-        }
-    
-        let nomesSorteados = [...nomes]; 
-        let resultadoFinal = [];
-    
-        do {
-            nomesSorteados = shuffleArray([...nomes]); 
-        } while (nomes.some((nome, i) => nome === nomesSorteados[i])); 
-
-        const resultado = document.getElementById('resultado');
-        resultado.innerHTML = ''; 
-    
-        nomes.forEach((nome, i) => {
-            const amigoSorteado = nomesSorteados[i];
-            const itemResultado = document.createElement('li');
-            itemResultado.textContent = '${nome} vai presentear ${amigoSorteado}';
-            resultado.appendChild(itemResultado);
-        });
-    }
-    
-    function shuffleArray(array) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]]; 
-        }
-        return array;
-    }
-    
-    nomes.forEach(nome => {
-        const indiceSorteado = Math.floor(Math.random() * nomesSorteados.length);
-        const amigoSorteado = nomesSorteados.splice(indiceSorteado, 1)[0];
-        
+    nomes.forEach((nome, i) => {
+        const amigoSorteado = nomesSorteados[i];
         const itemResultado = document.createElement('li');
-        itemResultado.textContent = '${nome} vai sortear ${amigoSorteado}';
+        itemResultado.textContent = `${nome} vai presentear ${amigoSorteado}`;
         resultado.appendChild(itemResultado);
     });
+}
+
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]]; 
+    }
+    return array;
 }
